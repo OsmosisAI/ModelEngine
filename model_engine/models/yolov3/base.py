@@ -16,7 +16,6 @@ import contextlib
 from typing import Tuple, Optional, List, Union
 
 import tensorflow as tf
-from tensorflow.python.keras.callbacks import ReduceLROnPlateau, EarlyStopping, ModelCheckpoint, TensorBoard
 
 from model_engine.constants import TensorflowStrategy
 from model_engine.inference import BaseModelInference, Box, BoundingBoxResult
@@ -148,22 +147,9 @@ class BaseYolo(BaseModelTrain, BaseModelInference):
     def _get_model(self, size, training, classes) -> tf.keras.Model:
         raise NotImplementedError('Must override _get_model')
 
-    def _load_model(self, labels_path: str, weights_path: str) -> Tuple[List[str], tf.keras.Model]:
-        try:
-            with open(labels_path, 'r') as labels_file:
-                label_data = labels_file.readlines()
-            labels = [label.strip() for label in label_data]
-        except FileNotFoundError:
-            raise  # TODO: possibly better error handling here
-
-        try:
-            model_instance = self._get_model(size=None, training=False, classes=len(labels))
-            model_instance.load_weights(weights_path).expect_partial()
-            return labels, model_instance
-        except Exception:
-            raise  # TODO: definitely better error handling here
-
-    def train(self, data_provider: TrainingYoloRecordProvider, config_provider: Union[TrainingConfigProvider, dict]=None):
+    def train(self, data_provider: TrainingYoloRecordProvider,
+              config_provider: Union[TrainingConfigProvider, dict] = None,
+              callbacks: Optional[List[tf.keras.callbacks.Callback]] = None):
         if config_provider is None:
             config_provider = self.Meta.default_configuration
 
@@ -174,10 +160,6 @@ class BaseYolo(BaseModelTrain, BaseModelInference):
         transfer_mode = config_provider['transfer']
         size = config_provider['yolo_size']
         weights = config_provider['weights']
-        reduce_lr_patience = config_provider['reduce_lr_on_plateau_patience']
-        plateau_reduce_factor = config_provider['reduce_lr_on_plateau_factor']
-        early_stopping_patience = config_provider['early_stopping_patience']
-        checkpoint_location = config_provider['checkpoint_location']
         epochs = config_provider['epochs']
 
         if strategy == TensorflowStrategy.MIRRORED_STRATEGY:
@@ -192,12 +174,8 @@ class BaseYolo(BaseModelTrain, BaseModelInference):
             if transfer_mode == 'none':
                 pass
             elif transfer_mode == 'darknet':
-                # Darknet transfer is a special case that works
-                # with incompatible number of classes
-
-                # reset top layers
                 model_pretrained = self._get_model(size, training=True, classes=80)
-                model_pretrained.load_weights(weights)
+                model_pretrained.load_weights(weights)  # TODO: Find better way to handle base weight files
 
                 model.get_layer('yolo_darknet').set_weights(
                     model_pretrained.get_layer('yolo_darknet').get_weights()
@@ -217,17 +195,6 @@ class BaseYolo(BaseModelTrain, BaseModelInference):
                 run_eagerly=False
             )
 
-            callbacks = [
-                ReduceLROnPlateau(patience=reduce_lr_patience, verbose=1, factor=plateau_reduce_factor),
-                EarlyStopping(patience=early_stopping_patience, verbose=1),
-                ModelCheckpoint(checkpoint_location, verbose=1, save_weights_only=True),
-                TensorBoard(log_dir='logs'),
-            ]
-
-            # TODO: Resolve callbacks API
-            # if system_callbacks is not None:
-            #     callbacks.extend(system_callbacks)
-
             training_data, validation_data = data_provider.training_data(batch_size=16, split=0.2)
 
             history = model.fit(
@@ -243,6 +210,21 @@ class BaseYolo(BaseModelTrain, BaseModelInference):
         if self._model_instance is None:
             # TODO: Custom exception type
             raise Exception('Model is not loaded. Do not call inference outside a session.')
+
+    def _load_model(self, labels_path: str, weights_path: str) -> Tuple[List[str], tf.keras.Model]:
+        try:
+            with open(labels_path, 'r') as labels_file:
+                label_data = labels_file.readlines()
+            labels = [label.strip() for label in label_data]
+        except FileNotFoundError:
+            raise  # TODO: possibly better error handling here
+
+        try:
+            model_instance = self._get_model(size=None, training=False, classes=len(labels))
+            model_instance.load_weights(weights_path).expect_partial()
+            return labels, model_instance
+        except Exception:
+            raise  # TODO: definitely better error handling here
 
     def inference(self, image):
         self._can_inference_check()
