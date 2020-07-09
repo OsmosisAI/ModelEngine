@@ -25,7 +25,6 @@ setuptools.setup(
     version=version,
     packages=setuptools.find_packages(),
     url='https://github.com/osmosisai/modelengine',
-    license='',  # TBD
     author='OsmosisAI, Inc.',
     author_email='contact@osmosisai.com',
     description='',
