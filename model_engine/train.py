@@ -13,7 +13,7 @@ class TrainingConfigProvider(object):
 
 
 class TrainingDataProvider(object):
-    def training_data(self, batch_size=None, split=None) -> Tuple[tf.data.Dataset, Optional[tf.data.Dataset]]:
+    def training_data(self, batch_size) -> Tuple[tf.data.Dataset, Optional[tf.data.Dataset]]:
         pass
 
 
