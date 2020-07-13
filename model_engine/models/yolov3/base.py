@@ -34,7 +34,7 @@ class TrainingYoloRecordProvider(TrainingDataProvider):
         self.anchors = anchors
         self.anchor_masks = anchor_masks
 
-    def training_data(self, batch_size=None, split=None) -> Tuple[tf.data.Dataset, Optional[tf.data.Dataset]]:
+    def training_data(self, batch_size) -> Tuple[tf.data.Dataset, Optional[tf.data.Dataset]]:
         train_dataset = dataset.load_tfrecord_dataset(
             self.train_path,
             self.label_map_path,
@@ -54,26 +54,22 @@ class TrainingYoloRecordProvider(TrainingDataProvider):
         )
         train_dataset = train_dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
-        if split is None:
-            val_dataset = None
-        else:
-
-            val_dataset = dataset.load_tfrecord_dataset(
-                self.val_path,
-                self.label_map_path,
-                self.size
-            )
-            val_dataset = val_dataset.batch(batch_size)
-            val_dataset = val_dataset.map(lambda x, y: (
-                    dataset.transform_images(x, self.size),
-                    dataset.transform_targets(
-                        y,
-                        self.anchors,
-                        self.anchor_masks,
-                        self.size
-                    )
+        val_dataset = dataset.load_tfrecord_dataset(
+            self.val_path,
+            self.label_map_path,
+            self.size
+        )
+        val_dataset = val_dataset.batch(batch_size)
+        val_dataset = val_dataset.map(lambda x, y: (
+                dataset.transform_images(x, self.size),
+                dataset.transform_targets(
+                    y,
+                    self.anchors,
+                    self.anchor_masks,
+                    self.size
                 )
             )
+        )
 
         return train_dataset, val_dataset
 
@@ -107,28 +103,24 @@ class YoloRecordProvider(TrainingYoloRecordProvider):
 
 
 default_tiny_config = {
+    'batch_size': 16,
     'training_strategy': None,
     'learning_rate': 0.001,
     'num_classes': 2,
     'transfer': 'darknet',
     'yolo_size': 416,
-    'reduce_lr_on_plateau_patience': 5,
-    'reduce_lr_on_plateau_factor': 0.4,
-    'early_stopping_patience': 8,
     'checkpoint_location': '/var/tmp/',
     'epochs': 100,
     'weights': '/var/tmp/model_data/yolov3-tiny.tf'
 }
 
 default_yolo_config = {
+    'batch_size': 16,
     'training_strategy': None,
     'learning_rate': 0.001,
     'num_classes': 2,
     'transfer': 'darknet',
     'yolo_size': 416,
-    'reduce_lr_on_plateau_patience': 5,
-    'reduce_lr_on_plateau_factor': 0.4,
-    'early_stopping_patience': 8,
     'checkpoint_location': '/var/tmp/',
     'epochs': 100,
     'weights': '/var/tmp/model_data/yolov3.tf'
@@ -154,6 +146,7 @@ class BaseYolo(BaseModelTrain, BaseModelInference):
             config_provider = self.Meta.default_configuration
 
         # Unpack as many config keys possible here, reduce risk of failure later
+        batch_size = config_provider['batch_size']
         strategy = config_provider['training_strategy']
         learning_rate = config_provider['learning_rate']
         num_classes = config_provider['num_classes']
@@ -195,7 +188,7 @@ class BaseYolo(BaseModelTrain, BaseModelInference):
                 run_eagerly=False
             )
 
-            training_data, validation_data = data_provider.training_data(batch_size=16, split=0.2)
+            training_data, validation_data = data_provider.training_data(batch_size)
 
             history = model.fit(
                 training_data,
