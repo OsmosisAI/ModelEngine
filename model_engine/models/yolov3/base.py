@@ -34,10 +34,13 @@ class TrainingYoloRecordProvider(TrainingDataProvider):
         self.anchors = anchors
         self.anchor_masks = anchor_masks
 
-    def training_data(self, batch_size) -> Tuple[tf.data.Dataset, Optional[tf.data.Dataset]]:
+    def training_data(self, config) -> Tuple[tf.data.Dataset, Optional[tf.data.Dataset]]:
+        batch_size = config['batch_size']
+
         train_dataset = dataset.load_tfrecord_dataset(
             self.train_path,
             self.label_map_path,
+            config,
             self.size
         )
         train_dataset = train_dataset.shuffle(buffer_size=512)
@@ -57,6 +60,7 @@ class TrainingYoloRecordProvider(TrainingDataProvider):
         val_dataset = dataset.load_tfrecord_dataset(
             self.val_path,
             self.label_map_path,
+            config,
             self.size
         )
         val_dataset = val_dataset.batch(batch_size)
@@ -111,7 +115,8 @@ default_tiny_config = {
     'yolo_size': 416,
     'checkpoint_location': '/var/tmp/',
     'epochs': 100,
-    'weights': '/var/tmp/model_data/yolov3-tiny.tf'
+    'weights': '/var/tmp/model_data/yolov3-tiny.tf',
+    'max_boxes': 100
 }
 
 default_yolo_config = {
@@ -123,7 +128,8 @@ default_yolo_config = {
     'yolo_size': 416,
     'checkpoint_location': '/var/tmp/',
     'epochs': 100,
-    'weights': '/var/tmp/model_data/yolov3.tf'
+    'weights': '/var/tmp/model_data/yolov3.tf',
+    'max_boxes': 100
 }
 
 
@@ -188,7 +194,7 @@ class BaseYolo(BaseModelTrain, BaseModelInference):
                 run_eagerly=False
             )
 
-            training_data, validation_data = data_provider.training_data(batch_size)
+            training_data, validation_data = data_provider.training_data(config_provider)
 
             history = model.fit(
                 training_data,

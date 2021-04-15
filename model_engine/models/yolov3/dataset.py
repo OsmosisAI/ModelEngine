@@ -98,7 +98,7 @@ IMAGE_FEATURE_MAP = {
 }
 
 
-def parse_tfrecord(tfrecord, class_table, size):
+def parse_tfrecord(tfrecord, class_table, size, max_boxes):
     x = tf.io.parse_single_example(tfrecord, IMAGE_FEATURE_MAP)
     x_train = tf.image.decode_jpeg(x['image/encoded'], channels=3)
     x_train = tf.image.resize(x_train, (size, size))
@@ -112,17 +112,18 @@ def parse_tfrecord(tfrecord, class_table, size):
                         tf.sparse.to_dense(x['image/object/bbox/ymax']),
                         labels], axis=1)
 
-    paddings = [[0, 100 - tf.shape(y_train)[0]], [0, 0]]
+    paddings = [[0, max_boxes - tf.shape(y_train)[0]], [0, 0]]
     y_train = tf.pad(y_train, paddings)
 
     return x_train, y_train
 
 
-def load_tfrecord_dataset(file_pattern, class_file, size=416):
+def load_tfrecord_dataset(file_pattern, class_file, config, size=416):
     LINE_NUMBER = -1  # TODO: use tf.lookup.TextFileIndex.LINE_NUMBER
     class_table = tf.lookup.StaticHashTable(tf.lookup.TextFileInitializer(
         class_file, tf.string, 0, tf.int64, LINE_NUMBER, delimiter="\n"), -1)
 
     files = tf.data.Dataset.list_files(file_pattern)
     dataset = files.flat_map(tf.data.TFRecordDataset)
-    return dataset.map(lambda x: parse_tfrecord(x, class_table, size))
+    max_boxes = config['max_boxes']
+    return dataset.map(lambda x: parse_tfrecord(x, class_table, size, max_boxes))
